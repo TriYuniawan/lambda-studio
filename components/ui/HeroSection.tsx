@@ -79,7 +79,7 @@ export function HomeHeroSection() {
           <div className="relative rounded-2xl md:rounded-[32px] overflow-hidden border border-white/10 shadow-2xl shadow-primary/10 transition-transform duration-700 ease-out hover:scale-[1.02]">
             <Image
               src="/demo2.png"
-              alt="Luma Studio workspace showing upload, curated styles, and a before-and-after preview"
+              alt="Lambda Studio workspace showing upload, curated styles, and a before-and-after preview"
               width={3290}
               height={1872}
               className="h-auto w-full object-cover"

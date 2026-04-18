@@ -30,7 +30,7 @@ export default function Navbar() {
         <Link href="/" className="navbar-logo" aria-label="Home">
           <Image
             src="/logo4.png"
-            alt="Luma logo"
+            alt="Lambda Studio logo"
             width={60}
             height={60}
             priority

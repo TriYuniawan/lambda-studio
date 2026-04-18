@@ -16,7 +16,7 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Lambda",
+  title: "Lambda Studio",
   description: "Transform your images with AI-powered style transfer",
 };
 
