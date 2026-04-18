@@ -53,10 +53,7 @@
   font-weight: 700;
   font-size: 1.2rem;
   letter-spacing: -0.02em;
-  background: linear-gradient(135deg, #a855f7, #7c3aed);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--primary);
 }
 
 /* ── Center links (desktop) ── */
@@ -96,7 +93,7 @@
   width: 0;
   height: 2px;
   border-radius: 1px;
-  background: linear-gradient(90deg, #a855f7, #7c3aed);
+  background: var(--primary);
   transform: translateX(-50%);
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -134,13 +131,13 @@
 }
 
 .navbar-btn-primary {
-  background: linear-gradient(135deg, #a855f7, #7c3aed);
-  color: #fff;
-  box-shadow: 0 2px 12px rgba(168, 85, 247, 0.3);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 2px 12px color-mix(in oklch, var(--primary) 30%, transparent);
 }
 
 .navbar-btn-primary:hover {
-  box-shadow: 0 4px 20px rgba(168, 85, 247, 0.45);
+  box-shadow: 0 4px 20px color-mix(in oklch, var(--primary) 45%, transparent);
   transform: translateY(-1px);
 }
 
@@ -152,7 +149,7 @@
 
 .navbar-btn-outline:hover {
   background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(168, 85, 247, 0.4);
+  border-color: var(--primary);
   transform: translateY(-1px);
 }
 
@@ -161,12 +158,12 @@
   width: 34px !important;
   height: 34px !important;
   border-radius: 10px !important;
-  border: 2px solid rgba(168, 85, 247, 0.5) !important;
+  border: 2px solid color-mix(in oklch, var(--primary) 50%, transparent) !important;
   transition: border-color 0.2s ease !important;
 }
 
 .navbar-avatar:hover {
-  border-color: #a855f7 !important;
+  border-color: var(--primary) !important;
 }
 
 /* ── Hamburger (mobile only) ── */
@@ -233,7 +230,7 @@
 
 .navbar-mobile-link:hover {
   color: #ffffff;
-  background: rgba(168, 85, 247, 0.12);
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
 }
 
 .navbar-mobile-auth {
@@ -291,7 +288,7 @@
 
 :root:not(.dark) .navbar-btn-outline:hover {
   background: rgba(0, 0, 0, 0.06);
-  border-color: rgba(168, 85, 247, 0.3);
+  border-color: color-mix(in oklch, var(--primary) 30%, transparent);
 }
 
 :root:not(.dark) .navbar-hamburger {
@@ -310,5 +307,5 @@
 
 :root:not(.dark) .navbar-mobile-link:hover {
   color: #000;
-  background: rgba(168, 85, 247, 0.08);
+  background: color-mix(in oklch, var(--primary) 8%, transparent);
 }

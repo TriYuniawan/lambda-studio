@@ -9,7 +9,11 @@ import {
 } from "lucide-react";
 
 /** MIME types accepted for user source images (upload + generation API). */
-export const ACCEPTED_SOURCE_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+export const ACCEPTED_SOURCE_IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
 export const HIGHLIGHTS: { label: string; icon: LucideIcon }[] = [
   { label: "AI Magic", icon: Wand2Icon },
@@ -31,8 +35,7 @@ export const GALLERY_IMAGES = [
   { src: "/gallery-4.png", alt: "Stylized coffee making scene" },
 ] as const;
 
-export const HERO_VIDEO_SRC = "https://ik.imagekit.io/31zmzxadw/hero.mp4?updatedAt=1776054470651";
-
+export const HERO_VIDEO_SRC = "https://ik.imagekit.io/31zmzxadw/hero3.mp4";
 export const SHOWCASE_BG_VIDEO_SRC =
   "https://ik.imagekit.io/31zmzxadw/showcase.mp4";
 
@@ -52,7 +55,12 @@ export const FOOTER_QUICK_LINKS = [
   { label: "Studio", href: "/studio" },
 ] as const;
 
-export const FEATURED_STYLES = ["Storybook 3D", "Anime Cel", "Clay Render", "Pixart"] as const;
+export const FEATURED_STYLES = [
+  "Storybook 3D",
+  "Anime Cel",
+  "Clay Render",
+  "Pixart",
+] as const;
 
 export const WORKFLOW_STYLE_PREVIEW = [
   FEATURED_STYLES[0],

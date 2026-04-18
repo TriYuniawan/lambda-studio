@@ -3,7 +3,12 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
-import { SignInButton, SignUpButton, Show, UserButton } from "@clerk/nextjs";
+import {
+  Show,
+  SignInButton,
+  SignUpButton,
+  UserButton,
+} from "@clerk/nextjs";
 import { Menu, X } from "lucide-react";
 
 const navLinks = [
@@ -24,11 +29,12 @@ export default function Navbar() {
         {/* Left — Logo */}
         <Link href="/" className="navbar-logo" aria-label="Home">
           <Image
-            src="/logo2.png"
+            src="/logo4.png"
             alt="Luma logo"
             width={60}
             height={60}
             priority
+            style={{ width: 60, height: "auto" }}
           />
 
           <div className="flex flex-col">
