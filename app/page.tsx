@@ -3,6 +3,7 @@ import GalleryShowcaseSection from "@/components/GalleryShowcaseSection";
 import { HowItWorksSection } from "@/components/HowItWorks";
 import { PricingSection } from "@/components/Pricing";
 import { TestimonialsSection } from "@/components/Testimonials";
+import { Footer2 } from "@/components/ui/footer-2";
 
 export default function Home() {
   return (
@@ -12,6 +13,7 @@ export default function Home() {
       <HowItWorksSection />
       <TestimonialsSection />
       <PricingSection />
+      <Footer2 />
     </main>
   );
 }
