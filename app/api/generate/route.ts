@@ -1,68 +1,60 @@
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";
-
 // ============================================================
 // Style Prompt Mapping
 // ============================================================
 const STYLE_PROMPTS: Record<string, string> = {
   "Storybook 3D":
-    "3D storybook illustration style, charming, whimsical, high quality 3D render, soft colors, soft lighting, cinematic depth",
+    "3D storybook illustration style, charming, whimsical, high quality 3D render, soft colors.",
   "Anime Cel":
-    "High quality anime cel style, 2D hand-drawn look, vibrant colors, clean lines, expressive characters",
+    "High quality anime cel style, 2D hand-drawn look, vibrant colors, clean lines.",
   "Clay Render":
-    "Clay render style, stop motion look, soft studio lighting, tactile clay texture, handcrafted feel, claymation",
+    "Clay render style, stop motion look, soft studio lighting, tactile clay texture, handcrafted feel.",
   Pixart:
-    "Modern 3D animated movie style, expressive characters, highly detailed, cinematic lighting, Pixar-inspired",
+    "Modern 3D animated movie style, expressive characters, highly detailed, cinematic lighting, Pixar-inspired.",
 };
 
 // ============================================================
-// Hugging Face Inference API Configuration
+// Model Config
 // ============================================================
-const HF_MODEL = "black-forest-labs/FLUX.1-schnell";
-const HF_API_URL = `https://router.huggingface.co/hf-inference/models/${HF_MODEL}`;
+// sourceful/riverflow-v2-fast → FREE, supports image-to-image, fast
+// sourceful/riverflow-v2-pro  → FREE, supports image-to-image, higher quality
+// Both confirmed free via OpenRouter Models API (pricing: prompt $0, completion $0)
+// Source: https://openrouter.ai/api/v1/models?output_modalities=image
+const OPENROUTER_MODEL = "sourceful/riverflow-v2-fast";
+const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 // ============================================================
-// OpenRouter Configuration (DISABLED — no credits, kept for reference)
+// Helper: Upload image to imgbb (free, no account needed with API key)
+// imgbb free API: https://api.imgbb.com/
+// Get free API key at: https://imgbb.com/upload -> API
 // ============================================================
-// const OPENROUTER_MODELS = ["sourceful/riverflow-v2-fast", "sourceful/riverflow-v2-pro"];
-// const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-//
-// async function generateWithOpenRouter(imageUrl: string, prompt: string, apiKey: string): Promise<string> {
-//   for (const model of OPENROUTER_MODELS) {
-//     const res = await fetch(OPENROUTER_API_URL, {
-//       method: "POST",
-//       headers: {
-//         Authorization: `Bearer ${apiKey}`,
-//         "Content-Type": "application/json",
-//         "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
-//         "X-Title": "Lambda Studio",
-//       },
-//       body: JSON.stringify({
-//         model,
-//         modalities: ["image"],
-//         messages: [
-//           {
-//             role: "user",
-//             content: [
-//               { type: "text", text: prompt },
-//               { type: "image_url", image_url: { url: imageUrl } },
-//             ],
-//           },
-//         ],
-//       }),
-//     });
-//     if (!res.ok) continue;
-//     const data = await res.json();
-//     const message = data.choices?.[0]?.message;
-//     const image =
-//       message?.images?.[0]?.imageUrl?.url ??
-//       message?.images?.[0]?.url ??
-//       (typeof message?.content === "string" && message.content.startsWith("data:") ? message.content : null);
-//     if (image) return image;
-//   }
-//   throw new Error("All OpenRouter models failed");
-// }
+async function uploadImageToImgbb(
+  imageBytes: ArrayBuffer,
+  imageType: string,
+  apiKey: string,
+): Promise<string> {
+  const base64 = Buffer.from(imageBytes).toString("base64");
+
+  const formData = new FormData();
+  formData.append("key", apiKey);
+  formData.append("image", base64);
+
+  const res = await fetch("https://api.imgbb.com/1/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(
+      `imgbb upload failed: ${err?.error?.message ?? res.statusText}`,
+    );
+  }
+
+  const data = await res.json();
+  return data.data.url as string;
+}
 
 // ============================================================
 // POST Handler
@@ -81,62 +73,88 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validate file type
-    if (!image.type.startsWith("image/")) {
+    // --- 2. Validate env vars ---
+    const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+    const IMGBB_API_KEY = process.env.IMGBB_API_KEY;
+
+    if (!OPENROUTER_API_KEY) {
       return NextResponse.json(
-        { error: "Invalid file type." },
-        { status: 400 },
+        { error: "OpenRouter API key not configured." },
+        { status: 500 },
       );
     }
 
-    // Validate file size (max 5MB)
-    if (image.size > 5 * 1024 * 1024) {
+    if (!IMGBB_API_KEY) {
       return NextResponse.json(
-        { error: "Image too large (max 5MB)." },
-        { status: 400 },
-      );
-    }
-
-    // --- 2. Validate HF token ---
-    const HF_API_TOKEN = process.env.HF_API_TOKEN;
-    if (!HF_API_TOKEN) {
-      return NextResponse.json(
-        { error: "Hugging Face API Token not configured." },
+        { error: "imgbb API key not configured." },
         { status: 500 },
       );
     }
 
     // --- 3. Build prompt ---
-    const styleDescription = STYLE_PROMPTS[style] ?? style;
-    const prompt = `Create an image in ${styleDescription}. High quality, detailed, professional artwork.`;
+    const styleDescription =
+      STYLE_PROMPTS[style] ??
+      `Restyle this image into ${style}. Keep the subject identity and composition the same.`;
+    const prompt = `Restyle this image into: ${styleDescription}. Keep the subject identity and composition the same.`;
 
-    // --- 4. Call Hugging Face FLUX.1-schnell (text-to-image) ---
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
+    // --- 4. Upload image to imgbb to get a public URL ---
+    // Sourceful models strongly recommend URLs over base64 due to 4.5MB request limit
+    const imageBytes = await image.arrayBuffer();
+    const imageUrl = await uploadImageToImgbb(
+      imageBytes,
+      image.type || "image/png",
+      IMGBB_API_KEY,
+    );
 
-    const response = await fetch(HF_API_URL, {
+    // --- 5. Call OpenRouter with Riverflow V2 Fast (free img2img model) ---
+    const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
-      signal: controller.signal,
       headers: {
-        Authorization: `Bearer ${HF_API_TOKEN}`,
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
+        "HTTP-Referer":
+          process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+        "X-Title": "Lambda Studio",
       },
       body: JSON.stringify({
-        inputs: prompt,
+        model: OPENROUTER_MODEL,
+        // Sourceful/Riverflow only outputs images (no text)
+        modalities: ["image"],
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: prompt,
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: imageUrl, // Public URL — avoids 4.5MB base64 limit
+                },
+              },
+            ],
+          },
+        ],
       }),
     });
 
-    clearTimeout(timeout);
-
-    // --- 5. Handle errors ---
+    // --- 6. Handle non-OK response ---
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
-      console.error("Hugging Face Error:", errorData || response.statusText);
+      console.error("OpenRouter Error:", errorData || response.statusText);
 
-      if (response.status === 503) {
+      if (response.status === 401) {
         return NextResponse.json(
-          { error: "Model is loading, please try again in 20-30 seconds." },
-          { status: 503 },
+          { error: "Invalid or missing OpenRouter API key." },
+          { status: 401 },
+        );
+      }
+      if (response.status === 402) {
+        return NextResponse.json(
+          { error: "OpenRouter credits exhausted. Please check your account." },
+          { status: 402 },
         );
       }
       if (response.status === 429) {
@@ -145,46 +163,58 @@ export async function POST(req: Request) {
           { status: 429 },
         );
       }
-      if (response.status === 401) {
-        return NextResponse.json(
-          { error: "Invalid or missing Hugging Face API token." },
-          { status: 401 },
-        );
-      }
 
       return NextResponse.json(
         {
           error:
-            errorData?.error ||
+            errorData?.error?.message ??
             `Failed to generate image (${response.status}).`,
         },
         { status: response.status },
       );
     }
 
-    // --- 6. Convert binary response to base64 data URL ---
-    // FLUX.1-schnell returns raw image bytes (JPEG)
-    const imageBuffer = await response.arrayBuffer();
-    const resultBase64 = Buffer.from(imageBuffer).toString("base64");
+    // --- 7. Extract generated image ---
+    // OpenRouter Sourceful models return images in:
+    // choices[0].message.images[].imageUrl.url  (base64 data URL)
+    const data = await response.json();
+    console.log("OpenRouter Response:", JSON.stringify(data, null, 2));
 
-    if (!resultBase64 || resultBase64.length < 100) {
+    const message = data.choices?.[0]?.message;
+    const generatedImageUrl =
+      message?.images?.[0]?.imageUrl?.url ??
+      message?.images?.[0]?.url ??
+      // fallback: some models embed base64 directly in content
+      (typeof message?.content === "string" &&
+      message.content.startsWith("data:")
+        ? message.content
+        : null);
+
+    if (!generatedImageUrl) {
+      console.error("Unexpected response structure:", JSON.stringify(data));
       return NextResponse.json(
         { error: "No image was generated. Please try again." },
         { status: 500 },
       );
     }
 
-    const contentType = response.headers.get("content-type") || "image/jpeg";
-    const resultImageUrl = `data:${contentType};base64,${resultBase64}`;
-
-    return NextResponse.json({ result: resultImageUrl });
+    return NextResponse.json({ result: generatedImageUrl });
   } catch (error: unknown) {
-    console.error("API Error:", error);
+    console.error("API Route Error:", error);
 
-    if (error instanceof Error && error.name === "AbortError") {
+    if (error instanceof Error) {
+      const msg = error.message.toLowerCase();
+
+      if (msg.includes("imgbb")) {
+        return NextResponse.json(
+          { error: "Failed to upload input image. Please try again." },
+          { status: 500 },
+        );
+      }
+
       return NextResponse.json(
-        { error: "Generation timed out. Please try again." },
-        { status: 504 },
+        { error: error.message || "Internal server error." },
+        { status: 500 },
       );
     }
 
