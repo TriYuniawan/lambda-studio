@@ -1,0 +1,65 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// User — synced from Clerk via webhook
+// ============================================================
+model User {
+  id           String        @id // Clerk User ID (e.g. "user_2abc...")
+  email        String        @unique
+  credits      Int           @default(15)
+  generations  Generation[]
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([email])
+}
+
+// ============================================================
+// Generation — setiap gambar yang di-generate oleh user
+// ============================================================
+model Generation {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prompt        String?
+  style         String
+  originalImage String   // URL gambar asli yang di-upload user
+  resultImage   String   // URL gambar hasil AI (permanent, dari ImageKit)
+  cost          Int      @default(5)
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ============================================================
+// Transaction — catatan pembelian kredit
+// ============================================================
+model Transaction {
+  id           String            @id @default(cuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id])
+  amount       Decimal           @db.Decimal(10, 2) // Jumlah uang yang dibayar
+  creditsAdded Int               // Jumlah kredit yang ditambahkan
+  status       TransactionStatus @default(PENDING)
+  paymentRef   String?           @unique // Reference ID dari Stripe/Midtrans
+  createdAt    DateTime          @default(now())
+
+  @@index([userId])
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}

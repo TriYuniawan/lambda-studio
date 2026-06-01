@@ -1,8 +1,15 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 const isProtectedRoute = createRouteMatcher(["/studio(.*)"]);
+const isPublicApiRoute = createRouteMatcher(["/api/webhooks(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
+  // Webhook endpoints harus bisa diakses tanpa autentikasi
+  // karena menerima request dari layanan eksternal (Clerk, Stripe, dll.)
+  if (isPublicApiRoute(req)) {
+    return;
+  }
+
   if (isProtectedRoute(req)) {
     await auth.protect();
   }
