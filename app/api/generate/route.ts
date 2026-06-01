@@ -1,4 +1,11 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
+
+// ============================================================
+// Constants
+// ============================================================
+const GENERATION_COST = 5; // Kredit yang dibutuhkan per generate
 
 // ============================================================
 // Style Prompt Mapping
@@ -40,6 +47,9 @@ async function uploadImageToImgbb(
   formData.append("key", apiKey);
   formData.append("image", base64);
 
+  // Suppress unused variable warning — imageType reserved for future content-type headers
+  void imageType;
+
   const res = await fetch("https://api.imgbb.com/1/upload", {
     method: "POST",
     body: formData,
@@ -61,7 +71,17 @@ async function uploadImageToImgbb(
 // ============================================================
 export async function POST(req: Request) {
   try {
-    // --- 1. Parse & validate form data ---
+    // --- 1. Authenticate user ---
+    const { userId } = await auth();
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "You must be logged in to generate images." },
+        { status: 401 },
+      );
+    }
+
+    // --- 2. Parse & validate form data ---
     const formData = await req.formData();
     const image = formData.get("image") as File | null;
     const style = formData.get("style") as string | null;
@@ -73,7 +93,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // --- 2. Validate env vars ---
+    // --- 3. Validate env vars ---
     const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
     const IMGBB_API_KEY = process.env.IMGBB_API_KEY;
 
@@ -91,13 +111,41 @@ export async function POST(req: Request) {
       );
     }
 
-    // --- 3. Build prompt ---
+    // --- 4. Check user credits (with lazy user creation) ---
+    let user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { credits: true },
+    });
+
+    // Jika user belum ada di DB (webhook belum terproses), buat secara lazy
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          id: userId,
+          email: "pending@sync.com",
+          credits: 15,
+        },
+        select: { credits: true },
+      });
+    }
+
+    if (user.credits < GENERATION_COST) {
+      return NextResponse.json(
+        {
+          error: `Insufficient credits. You need ${GENERATION_COST} credits but only have ${user.credits}.`,
+          code: "INSUFFICIENT_CREDITS",
+        },
+        { status: 402 },
+      );
+    }
+
+    // --- 5. Build prompt ---
     const styleDescription =
       STYLE_PROMPTS[style] ??
       `Restyle this image into ${style}. Keep the subject identity and composition the same.`;
     const prompt = `Restyle this image into: ${styleDescription}. Keep the subject identity and composition the same.`;
 
-    // --- 4. Upload image to imgbb to get a public URL ---
+    // --- 6. Upload image to imgbb to get a public URL ---
     // Sourceful models strongly recommend URLs over base64 due to 4.5MB request limit
     const imageBytes = await image.arrayBuffer();
     const imageUrl = await uploadImageToImgbb(
@@ -106,7 +154,7 @@ export async function POST(req: Request) {
       IMGBB_API_KEY,
     );
 
-    // --- 5. Call OpenRouter with Riverflow V2 Fast (free img2img model) ---
+    // --- 7. Call OpenRouter with Riverflow V2 Fast (free img2img model) ---
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
       headers: {
@@ -140,7 +188,7 @@ export async function POST(req: Request) {
       }),
     });
 
-    // --- 6. Handle non-OK response ---
+    // --- 8. Handle non-OK response ---
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
       console.error("OpenRouter Error:", errorData || response.statusText);
@@ -174,7 +222,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // --- 7. Extract generated image ---
+    // --- 9. Extract generated image ---
     // OpenRouter Sourceful models return images in:
     // choices[0].message.images[].imageUrl.url  (base64 data URL)
     const data = await response.json();
@@ -198,7 +246,38 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ result: generatedImageUrl });
+    // --- 10. Deduct credits & save to database (Prisma Transaction) ---
+    // Menggunakan $transaction untuk memastikan konsistensi:
+    // Jika salah satu operasi gagal, semuanya di-rollback.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const generation = await prisma.$transaction(async (tx: any) => {
+      // Kurangi kredit
+      await tx.user.update({
+        where: { id: userId },
+        data: { credits: { decrement: GENERATION_COST } },
+      });
+
+      // Simpan record generasi
+      const gen = await tx.generation.create({
+        data: {
+          userId,
+          prompt,
+          style,
+          originalImage: imageUrl,
+          resultImage: generatedImageUrl,
+          cost: GENERATION_COST,
+        },
+      });
+
+      return gen;
+    });
+
+    // --- 11. Return result ---
+    return NextResponse.json({
+      result: generatedImageUrl,
+      generationId: generation.id,
+      creditsRemaining: user.credits - GENERATION_COST,
+    });
   } catch (error: unknown) {
     console.error("API Route Error:", error);
 
